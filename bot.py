@@ -293,6 +293,28 @@ async def checkdiscord(interaction: discord.Interaction,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# /purge
+# ─────────────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="purge", description="🗑️ Delete messages from this channel")
+@app_commands.describe(amount="Number of messages to delete (1–500)")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def purge(interaction: discord.Interaction, amount: app_commands.Range[int, 1, 500]):
+    await interaction.response.defer(ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(
+        f"🗑️ Deleted **{len(deleted)}** message{'s' if len(deleted) != 1 else ''}.",
+        ephemeral=True,
+    )
+
+@purge.error
+async def purge_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message(
+            "❌ You need **Manage Messages** permission to use this.", ephemeral=True
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # /stopcheck
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="stopcheck", description="🛑 Stop the currently running check")
