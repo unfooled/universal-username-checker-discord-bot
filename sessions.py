@@ -49,6 +49,9 @@ class OpenSessionButton(discord.ui.View):
             if not category:
                 category = await guild.create_category("Sessions")
 
+            # Fetch owner properly (guild.owner can be None if not cached)
+            owner = guild.owner or await guild.fetch_member(guild.owner_id)
+
             # Hidden from everyone except the member + owner + bot
             bot_member = guild.get_member(interaction.client.user.id)
             overwrites = {
@@ -59,7 +62,7 @@ class OpenSessionButton(discord.ui.View):
                     read_message_history=True,
                     use_application_commands=True,
                 ),
-                guild.owner: discord.PermissionOverwrite(
+                owner: discord.PermissionOverwrite(
                     view_channel=True,
                     send_messages=True,
                     read_message_history=True,
