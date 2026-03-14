@@ -6,6 +6,7 @@ import aiohttp
 import random
 import string
 import os
+import asyncio
 
 from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker
 from checkers.token_manager import discord_tokens, ig_sessions
@@ -318,5 +319,11 @@ async def on_ready():
     print("   Commands synced.")
 
 
+async def main():
+    async with bot:
+        await bot.load_extension("sessions")
+        await bot.start(TOKEN)
+
+
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    asyncio.run(main())
