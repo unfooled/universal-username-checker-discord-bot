@@ -142,6 +142,53 @@ async def run_check(
     )
 
 
+# ── Cooldown system ───────────────────────────────────────────────────────────
+PAID_ROLE = "paid"
+
+# user_id -> timestamp of last use, per command type
+_cooldowns_regular: dict[int, float] = {}   # 1 min cooldown
+_cooldowns_discord: dict[int, float] = {}   # 1 hour cooldown
+
+def has_paid_role(interaction: discord.Interaction) -> bool:
+    if not interaction.guild:
+        return False
+    return any(r.name.lower() == PAID_ROLE for r in interaction.user.roles)
+
+async def check_cooldown(
+    interaction: discord.Interaction,
+    store: dict,
+    seconds: int,
+) -> bool:
+    """Returns True if user is allowed to proceed. Sends error and returns False if on cooldown."""
+    if has_paid_role(interaction):
+        return True
+    import time
+    now     = time.time()
+    last    = store.get(interaction.user.id, 0)
+    remaining = seconds - (now - last)
+    if remaining > 0:
+        mins = int(remaining // 60)
+        secs = int(remaining % 60)
+        if mins > 0:
+            time_str = f"{mins}m {secs}s"
+        else:
+            time_str = f"{secs}s"
+        await interaction.response.send_message(
+            f"🕐 You're on cooldown for **{time_str}**!\n"
+            f"*(Get the **{PAID_ROLE}** role to bypass all cooldowns & limits)*",
+            ephemeral=True,
+        )
+        return False
+    store[interaction.user.id] = now
+    return True
+
+def cap_amount(interaction: discord.Interaction, amount: int, limit: int) -> int:
+    """Caps amount to limit unless user has paid role."""
+    if has_paid_role(interaction):
+        return amount
+    return min(amount, limit)
+
+
 # ── Guard helper ──────────────────────────────────────────────────────────────
 async def start_check(interaction: discord.Interaction, mod, length, underscores, charset, amount):
     gid = interaction.guild_id or interaction.user.id
@@ -166,131 +213,140 @@ async def start_check(interaction: discord.Interaction, mod, length, underscores
 # /checkmc
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkmc", description="⛏️ Check Minecraft username availability")
-@app_commands.describe(length="Username length (3–16)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–100)")
+@app_commands.describe(length="Username length (3–16)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkmc(interaction: discord.Interaction,
                   length: app_commands.Range[int, 3, 16],
                   underscores: app_commands.Choice[str],
                   charset: app_commands.Choice[str],
                   amount: app_commands.Range[int, 1, 100]):
-    await start_check(interaction, mc, length, underscores.value, charset.value, amount)
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, mc, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checkroblox
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkroblox", description="🎮 Check Roblox username availability")
-@app_commands.describe(length="Username length (3–20)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–100)")
+@app_commands.describe(length="Username length (3–20)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkroblox(interaction: discord.Interaction,
                       length: app_commands.Range[int, 3, 20],
                       underscores: app_commands.Choice[str],
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
-    await start_check(interaction, roblox, length, underscores.value, charset.value, amount)
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, roblox, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checkgithub
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkgithub", description="🐙 Check GitHub username availability")
-@app_commands.describe(length="Username length (3–39)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50)")
+@app_commands.describe(length="Username length (3–39)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkgithub(interaction: discord.Interaction,
                       length: app_commands.Range[int, 3, 39],
                       underscores: app_commands.Choice[str],
                       charset: app_commands.Choice[str],
-                      amount: app_commands.Range[int, 1, 50]):
-    await start_check(interaction, github, length, underscores.value, charset.value, amount)
+                      amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, github, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checkig
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkig", description="📸 Check Instagram username availability")
-@app_commands.describe(length="Username length (3–30)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50)")
+@app_commands.describe(length="Username length (3–30)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkig(interaction: discord.Interaction,
                   length: app_commands.Range[int, 3, 30],
                   underscores: app_commands.Choice[str],
                   charset: app_commands.Choice[str],
-                  amount: app_commands.Range[int, 1, 50]):
+                  amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
     if not ig_sessions.available:
         await interaction.response.send_message(
             "⚠️ No Instagram sessions loaded. Add `sessionid` cookies to `tokens/ig_sessions.txt`.",
             ephemeral=True)
         return
-    await start_check(interaction, ig, length, underscores.value, charset.value, amount)
+    await start_check(interaction, ig, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checktiktok
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checktiktok", description="🎵 Check TikTok username availability")
-@app_commands.describe(length="Username length (3–24)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50)")
+@app_commands.describe(length="Username length (3–24)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checktiktok(interaction: discord.Interaction,
                       length: app_commands.Range[int, 3, 24],
                       underscores: app_commands.Choice[str],
                       charset: app_commands.Choice[str],
-                      amount: app_commands.Range[int, 1, 50]):
-    await start_check(interaction, tiktok, length, underscores.value, charset.value, amount)
+                      amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, tiktok, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checksteam
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checksteam", description="🎲 Check Steam custom URL availability")
-@app_commands.describe(length="ID length (3–32)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–100)")
+@app_commands.describe(length="ID length (3–32)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checksteam(interaction: discord.Interaction,
                      length: app_commands.Range[int, 3, 32],
                      underscores: app_commands.Choice[str],
                      charset: app_commands.Choice[str],
                      amount: app_commands.Range[int, 1, 100]):
-    await start_check(interaction, steam, length, underscores.value, charset.value, amount)
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, steam, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checkpsn
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkpsn", description="🕹️ Check PlayStation Network ID availability")
-@app_commands.describe(length="ID length (3–16)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–100)")
+@app_commands.describe(length="ID length (3–16)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkpsn(interaction: discord.Interaction,
                    length: app_commands.Range[int, 3, 16],
                    underscores: app_commands.Choice[str],
                    charset: app_commands.Choice[str],
                    amount: app_commands.Range[int, 1, 100]):
-    await start_check(interaction, psn, length, underscores.value, charset.value, amount)
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, psn, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checkgd
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkgd", description="🔺 Check Geometry Dash username availability")
-@app_commands.describe(length="Username length (3–15)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50)")
+@app_commands.describe(length="Username length (3–15)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkgd(interaction: discord.Interaction,
                   length: app_commands.Range[int, 3, 15],
                   underscores: app_commands.Choice[str],
                   charset: app_commands.Choice[str],
-                  amount: app_commands.Range[int, 1, 50]):
-    await start_check(interaction, gd, length, underscores.value, charset.value, amount)
+                  amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, gd, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # /checkdiscord
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checkdiscord", description="💬 Check Discord (pomelo) username availability")
-@app_commands.describe(length="Username length (2–32)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50)")
+@app_commands.describe(length="Username length (2–32)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–20, paid: unlimited)")
 @app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
 async def checkdiscord(interaction: discord.Interaction,
                        length: app_commands.Range[int, 2, 32],
                        underscores: app_commands.Choice[str],
                        charset: app_commands.Choice[str],
-                       amount: app_commands.Range[int, 1, 50]):
-    await start_check(interaction, discord_checker, length, underscores.value, charset.value, amount)
+                       amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_discord, 3600): return
+    await start_check(interaction, discord_checker, length, underscores.value, charset.value, cap_amount(interaction, amount, 20))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
