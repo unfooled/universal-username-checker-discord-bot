@@ -15,6 +15,7 @@ from checkers.token_manager import discord_tokens, ig_sessions
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
 
 intents = discord.Intents.default()
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # guild_id → asyncio.Event  (set = stop signal)
