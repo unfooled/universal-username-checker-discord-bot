@@ -1,0 +1,11 @@
+# Add your Instagram sessionid cookies here — one per line.
+# These are rotated automatically. Users will NEVER see the actual session values.
+# The bot only shows "Using session 1/2" or "Rotating to session 2/2" in Discord.
+#
+# How to get your sessionid:
+# 1. Open Instagram in your browser and log in
+# 2. Press F12 → Application tab → Cookies → instagram.com
+# 3. Find "sessionid" and copy the value
+#
+# Example:
+# 12345678%3AabCdEfGhIjKlMnOp%3A12%3AABcDefGHijKL...
