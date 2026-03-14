@@ -26,84 +26,98 @@ class OpenSessionButton(discord.ui.View):
         custom_id="open_session",
     )
     async def open_session(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guild  = interaction.guild
-        member = interaction.user
+        try:
+            guild  = interaction.guild
+            member = interaction.user
 
-        # Block if they already have one open
-        existing = discord.utils.get(
-            guild.text_channels, name=f"session-{member.name.lower()}"
-        )
-        if existing:
-            await interaction.response.send_message(
-                f"⚠️ You already have a session open: {existing.mention}\n"
-                f"Delete it first if you want a fresh one.",
+            # Block if they already have one open
+            existing = discord.utils.get(
+                guild.text_channels, name=f"session-{member.name.lower()}"
+            )
+            if existing:
+                await interaction.response.send_message(
+                    f"⚠️ You already have a session open: {existing.mention}\n"
+                    f"Delete it first if you want a fresh one.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            # Find or create "Sessions" category
+            category = discord.utils.get(guild.categories, name="Sessions")
+            if not category:
+                category = await guild.create_category("Sessions")
+
+            # Hidden from everyone except the member + owner + bot
+            bot_member = guild.get_member(interaction.client.user.id)
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                member: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    use_application_commands=True,
+                ),
+                guild.owner: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_channels=True,
+                    use_application_commands=True,
+                ),
+            }
+            if bot_member:
+                overwrites[bot_member] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    manage_channels=True,
+                    manage_permissions=True,
+                )
+
+            channel = await guild.create_text_channel(
+                name=f"session-{member.name.lower()}",
+                category=category,
+                overwrites=overwrites,
+                topic=f"Private checker session for {member.name}",
+            )
+
+            embed = discord.Embed(
+                title="🔍 Your Private Checker Session",
+                description=(
+                    f"Welcome {member.mention}! This is your personal checker channel.\n\n"
+                    "**Available commands:**\n"
+                    "`/checkmc` · `/checkroblox` · `/checkgithub` · `/checkig`\n"
+                    "`/checktiktok` · `/checksteam` · `/checkpsn` · `/checkgd` · `/checkdiscord`\n\n"
+                    "**Buttons below:**\n"
+                    "➕ Invite a friend to join your session\n"
+                    "🗑️ Delete this channel (you can always make a new one)"
+                ),
+                color=0x5865F2,
+            )
+            embed.set_footer(text="Only you and the server owner can see this channel.")
+
+            await channel.send(
+                content=member.mention,
+                embed=embed,
+                view=SessionControlView(),
+            )
+
+            await interaction.followup.send(
+                f"✅ Your session channel has been created: {channel.mention}",
                 ephemeral=True,
             )
-            return
 
-        # Find or create "Sessions" category
-        category = discord.utils.get(guild.categories, name="Sessions")
-        if not category:
-            category = await guild.create_category("Sessions")
-
-        # Hidden from everyone except the member + owner + bot
-        bot_member = guild.get_member(interaction.client.user.id)
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            member: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                use_application_commands=True,
-            ),
-            guild.owner: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                manage_channels=True,
-                use_application_commands=True,
-            ),
-        }
-        if bot_member:
-            overwrites[bot_member] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                manage_channels=True,
-                manage_permissions=True,
-            )
-
-        channel = await guild.create_text_channel(
-            name=f"session-{member.name.lower()}",
-            category=category,
-            overwrites=overwrites,
-            topic=f"Private checker session for {member.name}",
-        )
-
-        embed = discord.Embed(
-            title="🔍 Your Private Checker Session",
-            description=(
-                f"Welcome {member.mention}! This is your personal checker channel.\n\n"
-                "**Available commands:**\n"
-                "`/checkmc` · `/checkroblox` · `/checkgithub` · `/checkig`\n"
-                "`/checktiktok` · `/checksteam` · `/checkpsn` · `/checkgd` · `/checkdiscord`\n\n"
-                "**Buttons below:**\n"
-                "➕ Invite a friend to join your session\n"
-                "🗑️ Delete this channel (you can always make a new one)"
-            ),
-            color=0x5865F2,
-        )
-        embed.set_footer(text="Only you and the server owner can see this channel.")
-
-        await channel.send(
-            content=member.mention,
-            embed=embed,
-            view=SessionControlView(),
-        )
-
-        await interaction.response.send_message(
-            f"✅ Your session channel has been created: {channel.mention}",
-            ephemeral=True,
-        )
+        except Exception as e:
+            print(f"[ERROR] open_session failed: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                await interaction.followup.send(
+                    f"❌ Something went wrong: `{e}`", ephemeral=True
+                )
+            except Exception:
+                pass
 
 
 class SessionControlView(discord.ui.View):
