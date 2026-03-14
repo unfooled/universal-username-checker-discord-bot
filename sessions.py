@@ -52,8 +52,9 @@ class OpenSessionButton(discord.ui.View):
             # Fetch owner properly (guild.owner can be None if not cached)
             owner = guild.owner or await guild.fetch_member(guild.owner_id)
 
-            # Hidden from everyone except the member + owner + bot
-            bot_member = guild.get_member(interaction.client.user.id)
+            # guild.me is always available — no need to fetch
+            bot_member = guild.me
+
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
                 member: discord.PermissionOverwrite(
@@ -62,20 +63,21 @@ class OpenSessionButton(discord.ui.View):
                     read_message_history=True,
                     use_application_commands=True,
                 ),
-                owner: discord.PermissionOverwrite(
+                bot_member: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    manage_channels=True,
+                    manage_permissions=True,
+                ),
+            }
+            # Only add owner overwrite if owner is not the same as member
+            if owner.id != member.id:
+                overwrites[owner] = discord.PermissionOverwrite(
                     view_channel=True,
                     send_messages=True,
                     read_message_history=True,
                     manage_channels=True,
                     use_application_commands=True,
-                ),
-            }
-            if bot_member:
-                overwrites[bot_member] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    manage_channels=True,
-                    manage_permissions=True,
                 )
 
             channel = await guild.create_text_channel(
