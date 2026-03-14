@@ -334,16 +334,20 @@ async def stopcheck(interaction: discord.Interaction):
 async def on_ready():
     await bot.tree.sync()
     dc = f"{discord_tokens.count} token(s)" if discord_tokens.available else "no tokens (unauthed)"
-    ig = f"{ig_sessions.count} session(s)" if ig_sessions.available else "no sessions ⚠️"
+    ig_s = f"{ig_sessions.count} session(s)" if ig_sessions.available else "no sessions ⚠️"
     print(f"✅ Logged in as {bot.user}")
     print(f"   Discord tokens : {dc}")
-    print(f"   IG sessions    : {ig}")
+    print(f"   IG sessions    : {ig_s}")
     print("   Commands synced.")
 
 
 async def main():
     async with bot:
-        await bot.load_extension("sessions")
+        try:
+            await bot.load_extension("sessions")
+            print("✅ Sessions cog loaded.")
+        except Exception as e:
+            print(f"❌ Failed to load sessions cog: {e}")
         await bot.start(TOKEN)
 
 
