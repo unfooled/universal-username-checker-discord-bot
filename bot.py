@@ -8,8 +8,8 @@ import string
 import os
 import asyncio
 
-from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker
-from checkers.token_manager import discord_tokens, ig_sessions
+from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker, pinterest, youtube
+from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key, pinterest_tokens
 
 # ─────────────────────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -65,6 +65,7 @@ async def run_check(
     mod,
     usernames: list[str],
     stop_event: asyncio.Event,
+    cooldown_store: dict = None,
 ):
     gid = interaction.guild_id or interaction.user.id
     available_list, unavailable, unclear = [], 0, 0
@@ -105,6 +106,10 @@ async def run_check(
 
     finally:
         active_checks.pop(gid, None)
+        # Record cooldown AFTER check finishes
+        if cooldown_store is not None and not has_paid_role(interaction):
+            import time
+            cooldown_store[interaction.user.id] = time.time()
 
     # ── Build embed ───────────────────────────────────────────────────────────
     stopped = stop_event.is_set()
@@ -179,7 +184,7 @@ async def check_cooldown(
             ephemeral=True,
         )
         return False
-    store[interaction.user.id] = now
+    # Don't record time here — recorded after check finishes
     return True
 
 def cap_amount(interaction: discord.Interaction, amount: int, limit: int) -> int:
@@ -190,7 +195,7 @@ def cap_amount(interaction: discord.Interaction, amount: int, limit: int) -> int
 
 
 # ── Guard helper ──────────────────────────────────────────────────────────────
-async def start_check(interaction: discord.Interaction, mod, length, underscores, charset, amount):
+async def start_check(interaction: discord.Interaction, mod, length, underscores, charset, amount, cooldown_store: dict = None):
     gid = interaction.guild_id or interaction.user.id
     if gid in active_checks:
         await interaction.response.send_message(
@@ -206,7 +211,7 @@ async def start_check(interaction: discord.Interaction, mod, length, underscores
         f"(length=**{length}**, underscores=**{underscores}**, charset=**{charset}**, amount=**{amount}**)\n"
         f"⏳ Checking… use `/stopcheck` to cancel."
     )
-    asyncio.create_task(run_check(interaction, mod, names, stop))
+    asyncio.create_task(run_check(interaction, mod, names, stop, cooldown_store))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -221,7 +226,7 @@ async def checkmc(interaction: discord.Interaction,
                   charset: app_commands.Choice[str],
                   amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, mc, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, mc, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -236,7 +241,7 @@ async def checkroblox(interaction: discord.Interaction,
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, roblox, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, roblox, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -251,7 +256,7 @@ async def checkgithub(interaction: discord.Interaction,
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, github, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, github, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +276,7 @@ async def checkig(interaction: discord.Interaction,
             "⚠️ No Instagram sessions loaded. Add `sessionid` cookies to `tokens/ig_sessions.txt`.",
             ephemeral=True)
         return
-    await start_check(interaction, ig, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, ig, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -286,7 +291,7 @@ async def checktiktok(interaction: discord.Interaction,
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, tiktok, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, tiktok, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -301,7 +306,7 @@ async def checksteam(interaction: discord.Interaction,
                      charset: app_commands.Choice[str],
                      amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, steam, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, steam, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -316,7 +321,7 @@ async def checkpsn(interaction: discord.Interaction,
                    charset: app_commands.Choice[str],
                    amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, psn, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, psn, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -331,7 +336,7 @@ async def checkgd(interaction: discord.Interaction,
                   charset: app_commands.Choice[str],
                   amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, gd, length, underscores.value, charset.value, cap_amount(interaction, amount, 50))
+    await start_check(interaction, gd, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -346,7 +351,7 @@ async def checkdiscord(interaction: discord.Interaction,
                        charset: app_commands.Choice[str],
                        amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_discord, 3600): return
-    await start_check(interaction, discord_checker, length, underscores.value, charset.value, cap_amount(interaction, amount, 20))
+    await start_check(interaction, discord_checker, length, underscores.value, charset.value, cap_amount(interaction, amount, 20), _cooldowns_discord)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +377,41 @@ async def purge_error(interaction: discord.Interaction, error):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# /checkpinterest
+# ─────────────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="checkpinterest", description="📌 Check Pinterest username availability")
+@app_commands.describe(length="Username length (3–30)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
+@app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
+async def checkpinterest(interaction: discord.Interaction,
+                         length: app_commands.Range[int, 3, 30],
+                         underscores: app_commands.Choice[str],
+                         charset: app_commands.Choice[str],
+                         amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, pinterest, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /checkyoutube
+# ─────────────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="checkyoutube", description="▶️ Check YouTube handle availability")
+@app_commands.describe(length="Handle length (3–30)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
+@app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
+async def checkyoutube(interaction: discord.Interaction,
+                       length: app_commands.Range[int, 3, 30],
+                       underscores: app_commands.Choice[str],
+                       charset: app_commands.Choice[str],
+                       amount: app_commands.Range[int, 1, 100]):
+    if not youtube_api_key.available:
+        await interaction.response.send_message(
+            "⚠️ No YouTube API key loaded. Add it to `tokens/youtube_api_key.txt`.",
+            ephemeral=True)
+        return
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await start_check(interaction, youtube, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # /stopcheck
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="stopcheck", description="🛑 Stop the currently running check")
@@ -390,11 +430,15 @@ async def stopcheck(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    dc = f"{discord_tokens.count} token(s)" if discord_tokens.available else "no tokens (unauthed)"
-    ig_s = f"{ig_sessions.count} session(s)" if ig_sessions.available else "no sessions ⚠️"
+    dc  = f"{discord_tokens.count} token(s)"   if discord_tokens.available  else "no tokens (unauthed)"
+    ig_s = f"{ig_sessions.count} session(s)"   if ig_sessions.available     else "no sessions ⚠️"
+    yt  = f"{youtube_api_key.count} key(s)"    if youtube_api_key.available else "no key ⚠️"
+    pin = f"{pinterest_tokens.count} token(s)" if pinterest_tokens.available else "no token (scrape only)"
     print(f"✅ Logged in as {bot.user}")
-    print(f"   Discord tokens : {dc}")
-    print(f"   IG sessions    : {ig_s}")
+    print(f"   Discord tokens   : {dc}")
+    print(f"   IG sessions      : {ig_s}")
+    print(f"   YouTube key      : {yt}")
+    print(f"   Pinterest token  : {pin}")
     print("   Commands synced.")
 
 
