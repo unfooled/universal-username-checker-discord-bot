@@ -73,4 +73,3 @@ class TokenManager:
 discord_tokens  = TokenManager(_load("discord_tokens.txt"),  label="token")
 ig_sessions     = TokenManager(_load("ig_sessions.txt"),     label="session")
 youtube_api_key = TokenManager(_load("youtube_api_key.txt"), label="yt_key")
-pinterest_tokens = TokenManager(_load("pinterest_tokens.txt"), label="pinterest_token")
