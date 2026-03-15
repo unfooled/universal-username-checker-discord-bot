@@ -1,11 +1,11 @@
-# Add your Pinterest account token here — one per line.
+# Add your Pinterest csrftoken cookie here — one per line.
 # Users will NEVER see the actual token.
 #
 # How to get it:
 # 1. Log into Pinterest in your browser
-# 2. Press F12 → Network tab → refresh the page
-# 3. Click any request to pinterest.com → Headers
-# 4. Look for "Authorization: Bearer ..." and copy the token value
+# 2. Press F12 → Application tab → Cookies → pinterest.com
+# 3. Find "csrftoken" and copy the value
+# 4. Paste it below
 #
 # Example:
-# YOUR_PINTEREST_TOKEN_HERE
+# YOUR_CSRFTOKEN_HERE
