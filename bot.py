@@ -9,7 +9,7 @@ import os
 import asyncio
 
 from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker, pinterest, youtube
-from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key, pinterest_tokens
+from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key
 
 # ─────────────────────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -433,12 +433,10 @@ async def on_ready():
     dc  = f"{discord_tokens.count} token(s)"   if discord_tokens.available  else "no tokens (unauthed)"
     ig_s = f"{ig_sessions.count} session(s)"   if ig_sessions.available     else "no sessions ⚠️"
     yt  = f"{youtube_api_key.count} key(s)"    if youtube_api_key.available else "no key ⚠️"
-    pin = f"{pinterest_tokens.count} token(s)" if pinterest_tokens.available else "no token (scrape only)"
     print(f"✅ Logged in as {bot.user}")
     print(f"   Discord tokens   : {dc}")
     print(f"   IG sessions      : {ig_s}")
     print(f"   YouTube key      : {yt}")
-    print(f"   Pinterest token  : {pin}")
     print("   Commands synced.")
 
 
