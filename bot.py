@@ -23,7 +23,7 @@ active_checks: dict[int, asyncio.Event] = {}
 
 
 # ── Username generator ────────────────────────────────────────────────────────
-def gen_names(length: int, underscores: bool, charset: str, amount: int) -> list[str]:
+def gen_names(length: int, underscores: bool, charset: str, amount: int, platform: str = "") -> list[str]:
     if charset == "letters":
         pool = string.ascii_lowercase
     elif charset == "numbers":
@@ -42,9 +42,26 @@ def gen_names(length: int, underscores: bool, charset: str, amount: int) -> list
                     + "".join(random.choices(pool, k=length - pos - 1)))
         else:
             name = "".join(random.choices(pool, k=length))
+
+        # Pinterest requires at least 3 letters — no numbers-only or letter-starved names
+        if platform == "pinterest":
+            letter_count = sum(1 for c in name if c.isalpha())
+            if letter_count < 3:
+                continue
+
         if 3 <= len(name) <= 25:
             names.add(name)
     return list(names)[:amount]
+
+
+def parse_custom_names(text: str) -> list[str]:
+    """Parse newline-separated usernames from user input."""
+    names = []
+    for line in text.strip().splitlines():
+        name = line.strip()
+        if name:
+            names.append(name)
+    return names
 
 
 # ── Shared options (DRY) ──────────────────────────────────────────────────────
@@ -200,20 +217,123 @@ def cap_amount(interaction: discord.Interaction, amount: int, limit: int) -> int
 
 
 # ── Guard helper ──────────────────────────────────────────────────────────────
-async def start_check(interaction: discord.Interaction, mod, length, underscores, charset, amount, cooldown_store: dict = None):
-    uid = interaction.user.id  # per user, not per guild
+class CustomNamesModal(discord.ui.Modal, title="Enter your usernames"):
+    names_input = discord.ui.TextInput(
+        label="Usernames (one per line)",
+        style=discord.TextStyle.paragraph,
+        placeholder="hello\nworld\ntest123",
+        required=True,
+        max_length=2000,
+    )
+
+    def __init__(self, mod, length, underscores, charset, amount, cooldown_store):
+        super().__init__()
+        self.mod            = mod
+        self.length         = length
+        self.underscores    = underscores
+        self.charset        = charset
+        self.amount         = amount
+        self.cooldown_store = cooldown_store
+
+    async def on_submit(self, interaction: discord.Interaction):
+        parsed = [n.strip() for n in self.names_input.value.splitlines() if n.strip()]
+        if not parsed:
+            await interaction.response.send_message("⚠️ No valid usernames found.", ephemeral=True)
+            return
+
+        if not has_paid_role(interaction):
+            parsed = parsed[:self.amount]
+
+        await _launch_check(interaction, self.mod, self.length, self.underscores,
+                            self.charset, self.amount, self.cooldown_store, custom_names=parsed)
+
+
+class CheckModeView(discord.ui.View):
+    def __init__(self, mod, length, underscores, charset, amount, cooldown_store):
+        super().__init__(timeout=60)
+        self.mod            = mod
+        self.length         = length
+        self.underscores    = underscores
+        self.charset        = charset
+        self.amount         = amount
+        self.cooldown_store = cooldown_store
+
+    @discord.ui.button(label="🎲 Random names", style=discord.ButtonStyle.primary)
+    async def random_names(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self._owner_id:
+            await interaction.response.send_message("⚠️ This isn't your check!", ephemeral=True)
+            return
+        self.stop()
+        await interaction.message.delete()
+        await _launch_check(interaction, self.mod, self.length, self.underscores,
+                            self.charset, self.amount, self.cooldown_store)
+
+    @discord.ui.button(label="✏️ My own names", style=discord.ButtonStyle.secondary)
+    async def custom_names(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self._owner_id:
+            await interaction.response.send_message("⚠️ This isn't your check!", ephemeral=True)
+            return
+        self.stop()
+        await interaction.message.delete()
+        modal = CustomNamesModal(self.mod, self.length, self.underscores,
+                                 self.charset, self.amount, self.cooldown_store)
+        await interaction.response.send_modal(modal)
+
+    async def on_timeout(self):
+        try:
+            await self._message.delete()
+        except Exception:
+            pass
+
+
+async def ask_check_mode(interaction: discord.Interaction, mod, length, underscores, charset, amount, cooldown_store):
+    """Send the Random / My own names prompt."""
+    uid = interaction.user.id
     if uid in active_checks:
         await interaction.response.send_message(
             "⚠️ You already have a check running. Use `/stopcheck` first.", ephemeral=True)
         return
 
-    names = gen_names(length, underscores == "yes", charset, amount)
-    stop  = asyncio.Event()
-    active_checks[uid] = stop
+    view = CheckModeView(mod, length, underscores, charset, amount, cooldown_store)
+    view._owner_id = uid
 
     await interaction.response.send_message(
+        f"{mod.EMOJI} **{mod.NAME} Checker** — how do you want to check?",
+        view=view,
+        ephemeral=True,
+    )
+    view._message = await interaction.original_response()
+
+
+async def _launch_check(interaction: discord.Interaction, mod, length, underscores, charset, amount, cooldown_store, custom_names=None):
+    """Actually start the check after mode is chosen."""
+    uid = interaction.user.id
+    if uid in active_checks:
+        await interaction.response.send_message(
+            "⚠️ You already have a check running. Use `/stopcheck` first.", ephemeral=True)
+        return
+
+    if custom_names:
+        names = custom_names
+        # Pinterest: filter out names with less than 3 letters
+        if mod.NAME.lower() == "pinterest":
+            names = [n for n in names if sum(1 for c in n if c.isalpha()) >= 3]
+            if not names:
+                await interaction.response.send_message(
+                    "⚠️ None of your names are valid for Pinterest — they need at least 3 letters.",
+                    ephemeral=True)
+                return
+    else:
+        names = gen_names(length, underscores == "yes", charset, amount,
+                          platform=mod.NAME.lower().replace(" ", ""))
+
+    stop = asyncio.Event()
+    active_checks[uid] = stop
+
+    mode = "custom names" if custom_names else f"length=**{length}**, underscores=**{underscores}**, charset=**{charset}**"
+    await interaction.response.send_message(
         f"{mod.EMOJI} **{interaction.user.mention}** started `/check{mod.NAME.lower().replace(' ', '')}` "
-        f"(length=**{length}**, underscores=**{underscores}**, charset=**{charset}**, amount=**{amount}**)\n"
+        f"({mode}, amount=**{len(names)}**)\n"
         f"⏳ Checking… use `/stopcheck` to cancel."
     )
     asyncio.create_task(run_check(interaction, mod, names, stop, cooldown_store))
@@ -231,7 +351,7 @@ async def checkmc(interaction: discord.Interaction,
                   charset: app_commands.Choice[str],
                   amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, mc, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, mc, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,7 +366,7 @@ async def checkroblox(interaction: discord.Interaction,
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, roblox, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, roblox, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,7 +381,7 @@ async def checkgithub(interaction: discord.Interaction,
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, github, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, github, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -281,7 +401,7 @@ async def checkig(interaction: discord.Interaction,
             "⚠️ No Instagram sessions loaded. Add `sessionid` cookies to `tokens/ig_sessions.txt`.",
             ephemeral=True)
         return
-    await start_check(interaction, ig, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, ig, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,7 +416,7 @@ async def checktiktok(interaction: discord.Interaction,
                       charset: app_commands.Choice[str],
                       amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, tiktok, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, tiktok, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -311,7 +431,7 @@ async def checksteam(interaction: discord.Interaction,
                      charset: app_commands.Choice[str],
                      amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, steam, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, steam, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -326,7 +446,7 @@ async def checkpsn(interaction: discord.Interaction,
                    charset: app_commands.Choice[str],
                    amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, psn, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, psn, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -341,7 +461,7 @@ async def checkgd(interaction: discord.Interaction,
                   charset: app_commands.Choice[str],
                   amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, gd, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, gd, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -356,7 +476,7 @@ async def checkdiscord(interaction: discord.Interaction,
                        charset: app_commands.Choice[str],
                        amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_discord, 3600): return
-    await start_check(interaction, discord_checker, length, underscores.value, charset.value, cap_amount(interaction, amount, 20), _cooldowns_discord)
+    await ask_check_mode(interaction, discord_checker, length, underscores.value, charset.value, cap_amount(interaction, amount, 20), _cooldowns_discord)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -393,7 +513,7 @@ async def checkpinterest(interaction: discord.Interaction,
                          charset: app_commands.Choice[str],
                          amount: app_commands.Range[int, 1, 100]):
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, pinterest, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, pinterest, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -413,7 +533,62 @@ async def checkyoutube(interaction: discord.Interaction,
             ephemeral=True)
         return
     if not await check_cooldown(interaction, _cooldowns_regular, 60): return
-    await start_check(interaction, youtube, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+    await ask_check_mode(interaction, youtube, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /checknames  — check custom usernames on any platform
+# ─────────────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="checknames", description="🔎 Check your own list of usernames on any platform")
+@app_commands.describe(
+    platform="Which platform to check",
+    names="Usernames to check, separated by spaces or new lines (e.g. hello world test)",
+)
+@app_commands.choices(
+    platform=[
+        app_commands.Choice(name="⛏️  Minecraft",         value="mc"),
+        app_commands.Choice(name="🎮  Roblox",             value="roblox"),
+        app_commands.Choice(name="🐙  GitHub",             value="github"),
+        app_commands.Choice(name="📸  Instagram",          value="ig"),
+        app_commands.Choice(name="🎵  TikTok",             value="tiktok"),
+        app_commands.Choice(name="🎲  Steam",              value="steam"),
+        app_commands.Choice(name="🕹️  PlayStation",       value="psn"),
+        app_commands.Choice(name="🔺  Geometry Dash",     value="gd"),
+        app_commands.Choice(name="💬  Discord",           value="discord"),
+        app_commands.Choice(name="📌  Pinterest",         value="pinterest"),
+        app_commands.Choice(name="▶️  YouTube",           value="youtube"),
+    ]
+)
+async def checknames(
+    interaction: discord.Interaction,
+    platform: app_commands.Choice[str],
+    names: str,
+):
+    _platform_map = {
+        "mc": mc, "roblox": roblox, "github": github, "ig": ig,
+        "tiktok": tiktok, "steam": steam, "psn": psn, "gd": gd,
+        "discord": discord_checker, "pinterest": pinterest, "youtube": youtube,
+    }
+    mod = _platform_map[platform.value]
+
+    # Parse names — support spaces and newlines
+    parsed = [n.strip() for n in names.replace("\n", " ").split() if n.strip()]
+
+    if not parsed:
+        await interaction.response.send_message("⚠️ No valid usernames found.", ephemeral=True)
+        return
+
+    limit = 20 if platform.value == "discord" else 50
+    store = _cooldowns_discord if platform.value == "discord" else _cooldowns_regular
+    secs  = 3600 if platform.value == "discord" else 60
+
+    if not await check_cooldown(interaction, store, secs): return
+
+    # Cap amount for non-paid users
+    if not has_paid_role(interaction):
+        parsed = parsed[:limit]
+
+    await _launch_check(interaction, mod, 5, "no", "letters", len(parsed), store, custom_names=parsed)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
