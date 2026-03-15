@@ -9,7 +9,7 @@ import os
 import asyncio
 
 from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker, pinterest, youtube
-from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key
+from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key, pinterest_tokens
 
 # ─────────────────────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -72,8 +72,11 @@ async def run_check(
     token_msgs: list[str] = []
 
     try:
-        connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        connector = aiohttp.TCPConnector(ssl=True)
+        # Use Discord-specific session headers if running discord checker
+        from checkers.discord_checker import SESSION_HEADERS
+        session_headers = SESSION_HEADERS if mod.__name__ == "checkers.discord_checker" else {}
+        async with aiohttp.ClientSession(connector=connector, headers=session_headers) as session:
             for username in usernames:
                 if stop_event.is_set():
                     break
@@ -102,7 +105,13 @@ async def run_check(
                 else:
                     unclear += 1
 
-                await asyncio.sleep(mod.DELAY)
+                # Discord: random delay 2.5s ±30% matching GUI exactly
+                if mod.__name__ == "checkers.discord_checker":
+                    base = 2.5
+                    delay = max(0.5, base + random.uniform(-base * 0.3, base * 0.3))
+                    await asyncio.sleep(delay)
+                else:
+                    await asyncio.sleep(mod.DELAY)
 
     finally:
         active_checks.pop(gid, None)
@@ -430,13 +439,15 @@ async def stopcheck(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    dc  = f"{discord_tokens.count} token(s)"   if discord_tokens.available  else "no tokens (unauthed)"
-    ig_s = f"{ig_sessions.count} session(s)"   if ig_sessions.available     else "no sessions ⚠️"
-    yt  = f"{youtube_api_key.count} key(s)"    if youtube_api_key.available else "no key ⚠️"
+    dc   = f"{discord_tokens.count} token(s)"   if discord_tokens.available   else "no tokens (unauthed)"
+    ig_s = f"{ig_sessions.count} session(s)"    if ig_sessions.available      else "no sessions ⚠️"
+    yt   = f"{youtube_api_key.count} key(s)"    if youtube_api_key.available  else "no key ⚠️"
+    pin  = f"{pinterest_tokens.count} token(s)" if pinterest_tokens.available else "no token (scrape only)"
     print(f"✅ Logged in as {bot.user}")
     print(f"   Discord tokens   : {dc}")
     print(f"   IG sessions      : {ig_s}")
     print(f"   YouTube key      : {yt}")
+    print(f"   Pinterest token  : {pin}")
     print("   Commands synced.")
 
 
