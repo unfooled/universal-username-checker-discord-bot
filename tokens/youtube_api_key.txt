@@ -1,0 +1,10 @@
+# Add your YouTube Data API v3 key here (one per line if you have multiple).
+# Users will NEVER see the actual key — only "Using yt_key 1/1" is shown.
+#
+# How to get a key:
+# 1. Go to https://console.cloud.google.com/
+# 2. Create a project → Enable "YouTube Data API v3"
+# 3. Credentials → Create API Key → copy it here
+#
+# Example:
+# AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
