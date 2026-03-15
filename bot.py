@@ -18,7 +18,7 @@ intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# guild_id → asyncio.Event  (set = stop signal)
+# user_id → asyncio.Event  (set = stop signal)
 active_checks: dict[int, asyncio.Event] = {}
 
 
@@ -67,13 +67,12 @@ async def run_check(
     stop_event: asyncio.Event,
     cooldown_store: dict = None,
 ):
-    gid = interaction.guild_id or interaction.user.id
+    uid = interaction.user.id
     available_list, unavailable, unclear = [], 0, 0
     token_msgs: list[str] = []
 
     try:
         connector = aiohttp.TCPConnector(ssl=True)
-        # Use Discord-specific session headers if running discord checker
         from checkers.discord_checker import SESSION_HEADERS
         session_headers = SESSION_HEADERS if mod.__name__ == "checkers.discord_checker" else {}
         async with aiohttp.ClientSession(connector=connector, headers=session_headers) as session:
@@ -83,7 +82,6 @@ async def run_check(
 
                 raw = await mod.check(session, username)
 
-                # Some checkers return (result, token_status_msg)
                 if isinstance(raw, tuple):
                     result, tmsg = raw
                     if tmsg and tmsg not in token_msgs:
@@ -105,7 +103,6 @@ async def run_check(
                 else:
                     unclear += 1
 
-                # Discord: random delay 2.5s ±30% matching GUI exactly
                 if mod.__name__ == "checkers.discord_checker":
                     base = 2.5
                     delay = max(0.5, base + random.uniform(-base * 0.3, base * 0.3))
@@ -114,8 +111,7 @@ async def run_check(
                     await asyncio.sleep(mod.DELAY)
 
     finally:
-        active_checks.pop(gid, None)
-        # Record cooldown AFTER check finishes
+        active_checks.pop(uid, None)
         if cooldown_store is not None and not has_paid_role(interaction):
             import time
             cooldown_store[interaction.user.id] = time.time()
@@ -205,15 +201,15 @@ def cap_amount(interaction: discord.Interaction, amount: int, limit: int) -> int
 
 # ── Guard helper ──────────────────────────────────────────────────────────────
 async def start_check(interaction: discord.Interaction, mod, length, underscores, charset, amount, cooldown_store: dict = None):
-    gid = interaction.guild_id or interaction.user.id
-    if gid in active_checks:
+    uid = interaction.user.id  # per user, not per guild
+    if uid in active_checks:
         await interaction.response.send_message(
-            "⚠️ A check is already running here. Use `/stopcheck` first.", ephemeral=True)
+            "⚠️ You already have a check running. Use `/stopcheck` first.", ephemeral=True)
         return
 
     names = gen_names(length, underscores == "yes", charset, amount)
     stop  = asyncio.Event()
-    active_checks[gid] = stop
+    active_checks[uid] = stop
 
     await interaction.response.send_message(
         f"{mod.EMOJI} **{interaction.user.mention}** started `/check{mod.NAME.lower().replace(' ', '')}` "
@@ -425,11 +421,11 @@ async def checkyoutube(interaction: discord.Interaction,
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="stopcheck", description="🛑 Stop the currently running check")
 async def stopcheck(interaction: discord.Interaction):
-    gid = interaction.guild_id or interaction.user.id
-    if gid not in active_checks:
-        await interaction.response.send_message("ℹ️ No check is running right now.", ephemeral=True)
+    uid = interaction.user.id
+    if uid not in active_checks:
+        await interaction.response.send_message("ℹ️ You don't have a check running.", ephemeral=True)
         return
-    active_checks[gid].set()
+    active_checks[uid].set()
     await interaction.response.send_message("🛑 **Stopping… partial results will be sent shortly.**")
 
 
