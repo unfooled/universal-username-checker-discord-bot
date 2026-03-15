@@ -14,11 +14,11 @@ async def check(session: aiohttp.ClientSession, username: str, **_) -> str:
 
     headers = {
         "User-Agent": UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
     }
     if token:
-        headers["Authorization"] = f"Bearer {token}"
+        headers["Cookie"]      = f"csrftoken={token}"
+        headers["X-CSRFToken"] = token
 
     try:
         async with session.get(
@@ -35,11 +35,13 @@ async def check(session: aiohttp.ClientSession, username: str, **_) -> str:
                 return "ratelimit"
             if r.status == 200:
                 body = await r.text(errors="ignore")
-                if "sorry, we couldn't find that page" in body.lower():
+                # Available pages return 200 but have NO "username" field at all
+                if '"username"' not in body:
                     return "available"
-                if '"username"' in body and username.lower() in body.lower():
+                # Taken pages have "username":"<name>" in body
+                if f'"username":"{username}"' in body or f'"username": "{username}"' in body:
                     return "taken"
-                return "taken"
+                return "unclear"
             return "unclear"
     except Exception:
         return "unclear"
