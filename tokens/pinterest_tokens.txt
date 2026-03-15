@@ -1,0 +1,11 @@
+# Add your Pinterest account token here — one per line.
+# Users will NEVER see the actual token.
+#
+# How to get it:
+# 1. Log into Pinterest in your browser
+# 2. Press F12 → Network tab → refresh the page
+# 3. Click any request to pinterest.com → Headers
+# 4. Look for "Authorization: Bearer ..." and copy the token value
+#
+# Example:
+# YOUR_PINTEREST_TOKEN_HERE
