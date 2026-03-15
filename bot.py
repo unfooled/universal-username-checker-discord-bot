@@ -8,8 +8,8 @@ import string
 import os
 import asyncio
 
-from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker, pinterest, youtube
-from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key, pinterest_tokens
+from checkers import mc, roblox, github, ig, tiktok, steam, psn, gd, discord_checker, pinterest, youtube, twitch, reddit
+from checkers.token_manager import discord_tokens, ig_sessions, youtube_api_key, pinterest_tokens, twitch_credentials
 
 # ─────────────────────────────────────────────────────────────────────────────
 TOKEN = os.getenv("DISCORD_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -537,6 +537,41 @@ async def checkyoutube(interaction: discord.Interaction,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# /checktwitch
+# ─────────────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="checktwitch", description="🟣 Check Twitch username availability")
+@app_commands.describe(length="Username length (4–25)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
+@app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
+async def checktwitch(interaction: discord.Interaction,
+                      length: app_commands.Range[int, 4, 25],
+                      underscores: app_commands.Choice[str],
+                      charset: app_commands.Choice[str],
+                      amount: app_commands.Range[int, 1, 100]):
+    if not twitch_credentials.available:
+        await interaction.response.send_message(
+            "⚠️ No Twitch credentials loaded. Add them to `tokens/twitch_credentials.txt`.",
+            ephemeral=True)
+        return
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await ask_check_mode(interaction, twitch, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /checkreddit
+# ─────────────────────────────────────────────────────────────────────────────
+@bot.tree.command(name="checkreddit", description="🤖 Check Reddit username availability")
+@app_commands.describe(length="Username length (3–20)", underscores="Allow underscores?", charset="Character set", amount="How many to check (1–50, paid: unlimited)")
+@app_commands.choices(underscores=_underscore_choices, charset=_charset_choices)
+async def checkreddit(interaction: discord.Interaction,
+                      length: app_commands.Range[int, 3, 20],
+                      underscores: app_commands.Choice[str],
+                      charset: app_commands.Choice[str],
+                      amount: app_commands.Range[int, 1, 100]):
+    if not await check_cooldown(interaction, _cooldowns_regular, 60): return
+    await ask_check_mode(interaction, reddit, length, underscores.value, charset.value, cap_amount(interaction, amount, 50), _cooldowns_regular)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # /checknames  — check custom usernames on any platform
 # ─────────────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="checknames", description="🔎 Check your own list of usernames on any platform")
@@ -557,6 +592,8 @@ async def checkyoutube(interaction: discord.Interaction,
         app_commands.Choice(name="💬  Discord",           value="discord"),
         app_commands.Choice(name="📌  Pinterest",         value="pinterest"),
         app_commands.Choice(name="▶️  YouTube",           value="youtube"),
+        app_commands.Choice(name="🟣  Twitch",            value="twitch"),
+        app_commands.Choice(name="🤖  Reddit",            value="reddit"),
     ]
 )
 async def checknames(
@@ -568,10 +605,10 @@ async def checknames(
         "mc": mc, "roblox": roblox, "github": github, "ig": ig,
         "tiktok": tiktok, "steam": steam, "psn": psn, "gd": gd,
         "discord": discord_checker, "pinterest": pinterest, "youtube": youtube,
+        "twitch": twitch, "reddit": reddit,
     }
     mod = _platform_map[platform.value]
 
-    # Parse names — support spaces and newlines
     parsed = [n.strip() for n in names.replace("\n", " ").split() if n.strip()]
 
     if not parsed:
@@ -584,7 +621,6 @@ async def checknames(
 
     if not await check_cooldown(interaction, store, secs): return
 
-    # Cap amount for non-paid users
     if not has_paid_role(interaction):
         parsed = parsed[:limit]
 
@@ -610,15 +646,17 @@ async def stopcheck(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    dc   = f"{discord_tokens.count} token(s)"   if discord_tokens.available   else "no tokens (unauthed)"
-    ig_s = f"{ig_sessions.count} session(s)"    if ig_sessions.available      else "no sessions ⚠️"
-    yt   = f"{youtube_api_key.count} key(s)"    if youtube_api_key.available  else "no key ⚠️"
-    pin  = f"{pinterest_tokens.count} token(s)" if pinterest_tokens.available else "no token (scrape only)"
+    dc   = f"{discord_tokens.count} token(s)"      if discord_tokens.available    else "no tokens (unauthed)"
+    ig_s = f"{ig_sessions.count} session(s)"       if ig_sessions.available       else "no sessions ⚠️"
+    yt   = f"{youtube_api_key.count} key(s)"       if youtube_api_key.available   else "no key ⚠️"
+    pin  = f"{pinterest_tokens.count} token(s)"    if pinterest_tokens.available  else "no token (scrape only)"
+    tw   = f"{twitch_credentials.count} cred(s)"   if twitch_credentials.available else "no credentials ⚠️"
     print(f"✅ Logged in as {bot.user}")
     print(f"   Discord tokens   : {dc}")
     print(f"   IG sessions      : {ig_s}")
     print(f"   YouTube key      : {yt}")
     print(f"   Pinterest token  : {pin}")
+    print(f"   Twitch creds     : {tw}")
     print("   Commands synced.")
 
 
