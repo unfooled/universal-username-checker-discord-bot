@@ -1,0 +1,4 @@
+# Paste your GitHub personal access token below (one per line)
+# No scopes needed — public user lookup is free
+# Example: github_pat_xxxxxxxxxxxxxx
+
