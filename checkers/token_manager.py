@@ -70,8 +70,9 @@ class TokenManager:
 
 
 # ── Singletons loaded at startup ──────────────────────────────────────────────
-discord_tokens    = TokenManager(_load("discord_tokens.txt"),    label="token")
-ig_sessions       = TokenManager(_load("ig_sessions.txt"),       label="session")
-youtube_api_key   = TokenManager(_load("youtube_api_key.txt"),   label="yt_key")
-pinterest_tokens  = TokenManager(_load("pinterest_tokens.txt"),  label="pinterest_token")
+discord_tokens     = TokenManager(_load("discord_tokens.txt"),    label="token")
+ig_sessions        = TokenManager(_load("ig_sessions.txt"),       label="session")
+youtube_api_key    = TokenManager(_load("youtube_api_key.txt"),   label="yt_key")
+pinterest_tokens   = TokenManager(_load("pinterest_tokens.txt"),  label="pinterest_token")
 twitch_credentials = TokenManager(_load("twitch_credentials.txt"), label="twitch")
+github_token       = TokenManager(_load("github_token.txt"),      label="github_token")
